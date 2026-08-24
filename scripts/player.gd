@@ -316,9 +316,9 @@ func _physics_process(delta: float) -> void:
         _sprint_active = false
     _w_was_pressed = w_now
 
-    # --- Double-tap Space → toggle fly mode ---
+    # --- Double-tap Space → toggle fly mode (creative only) ---
     var space_now: bool = Input.is_physical_key_pressed(KEY_SPACE)
-    if space_now and not _space_was_pressed:
+    if space_now and not _space_was_pressed and _creative_mode:
         if now - _space_last_release_time < FLY_DOUBLE_TAP_WINDOW:
             _flying = not _flying
             velocity = Vector3.ZERO
@@ -499,6 +499,9 @@ func set_creative_mode(enabled: bool) -> void:
     if _creative_mode:
         _flying = true
         velocity = Vector3.ZERO
+    else:
+        # Survival mode has no flight — drop the player back to normal physics.
+        _flying = false
 
 
 func is_creative_mode() -> bool:
