@@ -18,6 +18,7 @@ const TP_CAMERA_OFFSET: Vector3 = Vector3(0.0, 0.4, 3.5)
 const MAX_REACH: float = 4.0
 const RUNTIME_MODE_SETTING: String = "game/runtime_mode"
 const MODE_CREATIVE: String = "creative"
+const PLANKS_TEXTURE: Texture2D = preload("res://assets/generated/planks_frame_0.png")
 
 const STEP_FREQUENCY: float = 1.4
 const SWING_AMP: float = deg_to_rad(35.0)
@@ -41,6 +42,10 @@ const CROUCH_HIP_DROP: float = 0.14
 const CROUCH_KNEE_BEND_DEG: float = 28.0
 const CROUCH_ARM_FORWARD_DEG: float = 12.0
 
+const MAX_HEALTH: int = 10            # 10 hearts
+const FALL_SAFE_SPEED: float = 12.0   # vertical speed below which no fall damage
+const FALL_DAMAGE_SCALE: float = 0.5  # hearts lost per m/s over the safe speed
+
 const BLOCK_MINE_TIME: Dictionary = {
     "dirt": 0.75,
     "grass": 0.75,
@@ -48,6 +53,7 @@ const BLOCK_MINE_TIME: Dictionary = {
     "wood": 1.125,
     "leaves": 0.125,
     "sand": 0.375,
+    "planks": 0.75,
 }
 
 const FP_ARM_BOB_FREQ: float = 8.0
@@ -131,6 +137,10 @@ var _punch_time: float = 0.0
 var _crack_stages: Array[Texture2D] = []
 var _current_crack_stage: int = -1
 
+var _health: int = MAX_HEALTH
+var _was_on_floor: bool = true
+var _fall_start_y: float = 0.0
+
 var _character_rest_position: Vector3 = Vector3.ZERO
 var _head_rest_position: Vector3 = Vector3.ZERO
 var _hair_rest_position: Vector3 = Vector3.ZERO
@@ -166,6 +176,7 @@ func _ready() -> void:
         _hud = huds[0]
         if _hud.has_signal("selection_changed"):
             _hud.selection_changed.connect(_on_selection_changed)
+        _sync_health_to_hud()
     camera_pivot.rotation.x = _pitch
     _apply_perspective()
     _on_selection_changed(0, "")  # ensure held-block starts hidden
@@ -378,11 +389,60 @@ func _physics_process(delta: float) -> void:
                 velocity.z = 0.0
 
     move_and_slide()
+    _update_fall_damage()
 
     _update_walk_animation(delta)
     _update_block_highlight()
     _update_mining(delta)
     _update_arm_bob(delta)
+
+
+func _update_fall_damage() -> void:
+    var on_floor: bool = is_on_floor()
+    if _was_on_floor and not on_floor:
+        # Just left the ground — remember where the fall began.
+        _fall_start_y = global_position.y
+    elif not _was_on_floor and on_floor:
+        # Just landed. Damage scales with how far we fell past the safe height.
+        var fall_distance: float = _fall_start_y - global_position.y
+        if fall_distance > 3.0:
+            var dmg: int = int(round((fall_distance - 3.0) * FALL_DAMAGE_SCALE))
+            if dmg > 0:
+                take_damage(dmg)
+    _was_on_floor = on_floor
+
+
+func take_damage(amount: int = 1) -> void:
+    if _health <= 0:
+        return
+    _health = maxi(_health - amount, 0)
+    _sync_health_to_hud()
+    if _health <= 0:
+        _die()
+
+
+func heal(amount: int = 1) -> void:
+    _health = mini(_health + amount, MAX_HEALTH)
+    _sync_health_to_hud()
+
+
+func get_health() -> int:
+    return _health
+
+
+func _sync_health_to_hud() -> void:
+    if _hud != null and _hud.has_method("set_health"):
+        _hud.set_health(_health)
+
+
+func _die() -> void:
+    # Respawn at world spawn with full health.
+    if _world != null and _world.has_method("get_spawn_height"):
+        var h: int = _world.get_spawn_height()
+        global_position = Vector3(0.0, float(h) + 2.0, 0.0)
+    velocity = Vector3.ZERO
+    _health = MAX_HEALTH
+    _sync_health_to_hud()
 
 
 func _process_fly_movement(delta: float, space_now: bool) -> void:
@@ -773,4 +833,6 @@ func _texture_for(type: String) -> Texture2D:
             return leaves_texture
         "sand":
             return sand_texture
+        "planks":
+            return PLANKS_TEXTURE
     return null

@@ -25,8 +25,10 @@ const TOTAL_SLOTS: int = 41
 const RUNTIME_MODE_SETTING: String = "game/runtime_mode"
 const MODE_CREATIVE: String = "creative"
 const CREATIVE_BLOCKS: Array[String] = [
-    "dirt", "grass", "cobble", "wood", "leaves", "sand",
+    "dirt", "grass", "cobble", "wood", "leaves", "sand", "planks",
 ]
+const MAX_HEARTS: int = 10
+const HEART_SIZE: Vector2 = Vector2(22.0, 22.0)
 
 signal selection_changed(slot_index: int, item_type: String)
 
@@ -54,8 +56,11 @@ const RECIPES: Array = [
 var planks_texture: Texture2D = load("res://assets/generated/planks_frame_0.png")
 var crafting_table_texture: Texture2D = load("res://assets/generated/crafting_table_frame_0.png")
 var feather_texture: Texture2D = load("res://assets/generated/feather_frame_0.png")
+var heart_full_texture: Texture2D = load("res://assets/generated/heart_full_frame_0.png")
+var heart_empty_texture: Texture2D = load("res://assets/generated/heart_empty_frame_0.png")
 
 @onready var hotbar: HBoxContainer = $Hotbar
+@onready var health_bar: HBoxContainer = $HealthBar
 @onready var inventory: PanelContainer = $Inventory
 @onready var inv_grid: GridContainer = $Inventory/InvContent/InvGrid
 
@@ -65,6 +70,8 @@ var _selected_slot: int = 0
 var _held: Dictionary = {"type": "", "count": 0}  # cursor-held stack
 var _cursor_preview: Control
 var _creative_mode: bool = false
+var _heart_icons: Array[TextureRect] = []
+var _health: int = MAX_HEARTS    # 1 heart == 1 health point, out of MAX_HEARTS
 
 
 func _enter_tree() -> void:
@@ -77,6 +84,7 @@ func _ready() -> void:
         _slots[i] = {"type": "", "count": 0}
     _slot_panels.resize(TOTAL_SLOTS)
     _build_hotbar()
+    _build_health_bar()
     _build_crafting_section()
     _build_inventory_grid()
     _style_inventory_panel()
@@ -124,6 +132,23 @@ func is_creative_mode() -> bool:
     return _creative_mode
 
 
+func set_health(value: int) -> void:
+    _health = clampi(value, 0, MAX_HEARTS)
+    _refresh_hearts()
+
+
+func get_health() -> int:
+    return _health
+
+
+func damage(amount: int = 1) -> void:
+    set_health(_health - amount)
+
+
+func heal(amount: int = 1) -> void:
+    set_health(_health + amount)
+
+
 func add_item(type: String, count: int) -> int:
     # Prefer merging into an existing stack of the same type (hotbar first, then inventory).
     var last: int = INV_START + INVENTORY_ROWS * INVENTORY_COLS
@@ -168,6 +193,25 @@ func _build_hotbar() -> void:
         var slot: Panel = _make_slot(str(i + 1), idx)
         hotbar.add_child(slot)
         _slot_panels[idx] = slot
+
+
+func _build_health_bar() -> void:
+    for i in MAX_HEARTS:
+        var heart: TextureRect = TextureRect.new()
+        heart.custom_minimum_size = HEART_SIZE
+        heart.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+        heart.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+        heart.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+        heart.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        heart.texture = heart_full_texture
+        health_bar.add_child(heart)
+        _heart_icons.append(heart)
+    _refresh_hearts()
+
+
+func _refresh_hearts() -> void:
+    for i in _heart_icons.size():
+        _heart_icons[i].texture = heart_full_texture if i < _health else heart_empty_texture
 
 
 func _build_crafting_section() -> void:
